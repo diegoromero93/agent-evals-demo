@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Evaluating AI Agents: Deterministic Checks And LLM Judges</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+  :root {
+    --bg:       #0c0e13;
+    --surface:  #13161e;
+    --border:   #222638;
+    --text:     #d4daea;
+    --dim:      #4e5a78;
+    --bright:   #f0f4ff;
+    --green:    #3de89a;
+    --blue:     #6b8fff;
+    --orange:   #f0a030;
+    --red:      #ff5e5e;
+    --mono:     'JetBrains Mono', monospace;
+    --sans:     'Inter', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden;
+  }
+
+  /* ── DECK ────────────────────────────────────────────────── */
+  #deck { width: 100vw; height: 100vh; position: relative; overflow: hidden; }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 64px 96px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(48px);
+    transition: opacity .38s ease, transform .38s ease;
+    background: var(--bg);
+  }
+  .slide.active  { opacity: 1; pointer-events: all; transform: translateX(0); }
+  .slide.exit    { opacity: 0; transform: translateX(-48px); }
+
+  /* centered variant */
+  .slide.center  { align-items: center; text-align: center; }
+
+  /* dot-grid background */
+  .slide::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(107,143,255,.06) 1px, transparent 1px);
+    background-size: 36px 36px;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .slide > * { position: relative; z-index: 1; }
+
+  /* ── PROGRESS ────────────────────────────────────────────── */
+  #progress {
+    position: fixed; top: 0; left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--green), var(--blue));
+    box-shadow: 0 0 10px var(--green);
+    transition: width .35s ease;
+    z-index: 999;
+  }
+
+  /* ── SLIDE NUMBER ────────────────────────────────────────── */
+  .slide-num {
+    position: absolute;
+    bottom: 32px; right: 40px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--dim);
+    letter-spacing: .1em;
+    z-index: 2;
+  }
+
+  /* ── NAV ─────────────────────────────────────────────────── */
+  #nav {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(19,22,30,.92);
+    border: 1px solid var(--border);
+    border-radius: 40px;
+    padding: 8px 18px;
+    backdrop-filter: blur(16px);
+    z-index: 999;
+  }
+  #nav button {
+    background: none; border: none;
+    color: var(--dim); cursor: pointer;
+    font-size: 20px; padding: 2px 10px;
+    border-radius: 6px;
+    transition: color .2s, background .2s;
+  }
+  #nav button:hover { color: var(--green); background: rgba(61,232,154,.08); }
+  #slide-counter {
+    font-family: var(--mono); font-size: 12px;
+    color: var(--dim); min-width: 52px; text-align: center;
+  }
+
+  /* ── TYPOGRAPHY SCALE ────────────────────────────────────── */
+  /* Large title — for title slides */
+  .t-hero {
+    font-size: clamp(40px, 6vw, 76px);
+    font-weight: 900;
+    line-height: 1.04;
+    letter-spacing: -.03em;
+    color: var(--bright);
+    margin-bottom: 20px;
+  }
+  .t-hero em { color: var(--green); font-style: normal; }
+
+  /* Section title — for content slides */
+  .t-title {
+    font-size: clamp(30px, 4vw, 52px);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -.02em;
+    color: var(--bright);
+    margin-bottom: 40px;
+  }
+  .t-title em { color: var(--green); font-style: normal; }
+
+  /* Body text — big enough to read from the back */
+  .t-body {
+    font-size: clamp(18px, 2vw, 24px);
+    line-height: 1.6;
+    color: var(--text);
+  }
+
+  /* Subtitle / label */
+  .t-label {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 16px;
+  }
+
+  /* ── SIMPLE BULLET LIST ───────────────────────────────────── */
+  .list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    max-width: 800px;
+  }
+  .list li {
+    font-size: clamp(18px, 2vw, 24px);
+    line-height: 1.45;
+    color: var(--text);
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .list li .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+    margin-top: 10px;
+  }
+  .list li.red .dot   { background: var(--red); }
+  .list li.orange .dot{ background: var(--orange); }
+  .list li.blue .dot  { background: var(--blue); }
+
+  /* ── TWO COLUMNS ─────────────────────────────────────────── */
+  .cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    width: 100%;
+    max-width: 1100px;
+  }
+  .cols-wide { max-width: 1200px; }
+
+  /* ── CARD ────────────────────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 32px;
+  }
+  .card-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin-bottom: 14px;
+  }
+  .card-title {
+    font-size: clamp(20px, 2.2vw, 28px);
+    font-weight: 700;
+    color: var(--bright);
+    margin-bottom: 16px;
+    line-height: 1.2;
+  }
+  .card-body {
+    font-size: clamp(15px, 1.6vw, 18px);
+    color: var(--text);
+    line-height: 1.65;
+  }
+
+  /* ── CODE BLOCK ──────────────────────────────────────────── */
+  .code {
+    background: #080a0f;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    font-family: var(--mono);
+    font-size: clamp(14px, 1.5vw, 17px);
+    color: var(--text);
+    line-height: 1.85;
+    width: 100%;
+  }
+  .kw  { color: var(--blue); font-weight: 600; }
+  .fn  { color: var(--green); }
+  .str { color: var(--orange); }
+  .dim { color: var(--dim); }
+  .num { color: #c792ea; }
+
+  /* ── EVAL LINES ──────────────────────────────────────────── */
+  .eval-line {
+    font-family: var(--mono);
+    font-size: clamp(15px, 1.6vw, 18px);
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(34,38,56,.6);
+    line-height: 1.3;
+  }
+  .eval-line:last-child { border-bottom: none; }
+  .pass { color: var(--green); font-weight: 600; }
+  .fail { color: var(--red);   font-weight: 600; }
+  .ename{ color: var(--text); }
+
+  /* ── STEP LIST ───────────────────────────────────────────── */
+  .steps {
+    display: flex; flex-direction: column; gap: 12px;
+    width: 100%; max-width: 680px;
+  }
+  .step {
+    display: flex; gap: 20px; align-items: center;
+    padding: 14px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: clamp(16px, 1.7vw, 20px);
+    color: var(--text);
+  }
+  .step-num {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--green);
+    font-weight: 600;
+    min-width: 28px;
+    flex-shrink: 0;
+  }
+
+  /* ── FLOW DIAGRAM ────────────────────────────────────────── */
+  .flow {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    width: 100%;
+  }
+  .flow-box {
+    padding: 12px 28px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    font-family: var(--mono);
+    font-size: clamp(13px, 1.4vw, 16px);
+    color: var(--bright);
+    text-align: center;
+    white-space: nowrap;
+  }
+  .flow-box.hi { border-color: var(--green); color: var(--green); background: rgba(61,232,154,.05); }
+  .flow-box.blue { border-color: var(--blue); color: var(--blue); background: rgba(107,143,255,.05); }
+  .flow-box.orange { border-color: var(--orange); color: var(--orange); background: rgba(240,160,48,.05); }
+  .flow-arrow { color: var(--dim); font-size: 20px; line-height: 1; }
+  .flow-row   { display: flex; gap: 16px; align-items: center; justify-content: center; }
+  .flow-col   { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+
+  /* ── DISCLAIMER ──────────────────────────────────────────── */
+  .warn {
+    background: rgba(240,160,48,.07);
+    border: 1px solid rgba(240,160,48,.3);
+    border-radius: 10px;
+    padding: 14px 22px;
+    font-size: clamp(14px, 1.5vw, 17px);
+    color: var(--orange);
+    display: flex; align-items: center; gap: 12px;
+    width: 100%; max-width: 900px;
+  }
+  .warn strong { color: #ffbe5c; }
+
+  /* ── TAKEAWAY ROW ────────────────────────────────────────── */
+  .takeaway {
+    display: flex; gap: 20px; align-items: flex-start;
+    padding: 18px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--green);
+    border-radius: 10px;
+    font-size: clamp(17px, 1.8vw, 21px);
+    color: var(--text);
+    line-height: 1.45;
+    width: 100%; max-width: 860px;
+    transition: border-color .2s, transform .2s;
+  }
+  .takeaway:hover { transform: translateX(4px); border-left-color: var(--blue); }
+  .takeaway-n {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--green);
+    font-weight: 700;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  /* ── FINAL QUOTE ─────────────────────────────────────────── */
+  .quote {
+    font-size: clamp(18px, 2.2vw, 26px);
+    line-height: 1.6;
+    color: var(--bright);
+    font-weight: 500;
+    max-width: 800px;
+    text-align: center;
+    padding: 36px 44px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    position: relative;
+    margin-top: 32px;
+  }
+  .quote::before {
+    content: '"';
+    font-size: 120px;
+    color: var(--green);
+    opacity: .08;
+    position: absolute;
+    top: -10px; left: 20px;
+    font-family: Georgia, serif;
+    line-height: 1;
+  }
+
+  /* ── ACCENT LINE (title slide) ───────────────────────────── */
+  .accent-bar {
+    width: 56px; height: 4px;
+    background: linear-gradient(90deg, var(--green), var(--blue));
+    border-radius: 2px;
+    margin: 24px 0 28px;
+  }
+
+  /* ── TAG ─────────────────────────────────────────────────── */
+  .tag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 12px;
+    padding: 5px 12px; border-radius: 5px;
+  }
+  .tag-green  { background: rgba(61,232,154,.1);  color: var(--green);  border: 1px solid rgba(61,232,154,.25); }
+  .tag-blue   { background: rgba(107,143,255,.1); color: var(--blue);   border: 1px solid rgba(107,143,255,.25);}
+  .tag-orange { background: rgba(240,160,48,.1);  color: var(--orange); border: 1px solid rgba(240,160,48,.25); }
+
+  /* pill (title slide) */
+  .pill {
+    font-family: var(--mono); font-size: 13px;
+    padding: 7px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px; color: var(--text);
+  }
+  .pills { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 32px; }
+</style>
+</head>
+<body>
+
+<div id="progress"></div>
+
+<div id="deck">
+
+  <!-- ── 1: TITLE ──────────────────────────────────────────── -->
+  <div class="slide center active" id="s1">
+    <span class="slide-num">01 / 16</span>
+    <div class="t-label" style="justify-content:center">Friday Presentation</div>
+    <h1 class="t-hero">
+      Evaluating AI Agents:<br>
+      <em>Deterministic Checks</em><br>
+      And LLM Judges
+    </h1>
+    <div class="accent-bar" style="margin: 24px auto 28px;"></div>
+    <p class="t-body" style="max-width: 560px;">
+      A practical demo with a tool-using email agent
+    </p>
+    <div class="pills" style="justify-content:center">
+      <span class="pill">AI SDK</span>
+      <span class="pill">OpenAI</span>
+      <span class="pill">TypeScript</span>
+      <span class="pill">Tool-using Agent</span>
+      <span class="pill">LLM-as-Judge</span>
+    </div>
+  </div>
+
+  <!-- ── 2: WHY AGENT EVALS MATTER ─────────────────────────── -->
+  <div class="slide" id="s2">
+    <span class="slide-num">02 / 16</span>
+    <div class="t-label">Context</div>
+    <h2 class="t-title">Why Agent Evals Matter</h2>
+    <div class="cols" style="max-width: 1000px; gap: 24px;">
+      <div class="card">
+        <div class="card-label">Simple LLM call</div>
+        <div class="card-body" style="font-size: clamp(17px, 1.8vw, 20px);">
+          Prompt &rarr; Model &rarr; Response<br><br>
+          One input. One output.<br>Easy to check.
+        </div>
+      </div>
+      <div class="card" style="border-color: rgba(107,143,255,.4);">
+        <div class="card-label">Agent</div>
+        <div class="card-body" style="font-size: clamp(17px, 1.8vw, 20px);">
+          Task &rarr; Plan &rarr; Tool &rarr; Observe &rarr; Tool &rarr; Output<br><br>
+          Many steps. Each one can fail.
+        </div>
+      </div>
+    </div>
+    <ul class="list" style="margin-top: 28px; max-width: 1000px;">
+      <li><span class="dot"></span> More steps = more chances for something to go wrong</li>
+      <li><span class="dot red"></span> Agents can call the wrong tool or skip a required step</li>
+      <li><span class="dot orange"></span> Side effects — like saving a file — also need to be checked</li>
+    </ul>
+  </div>
+
+  <!-- ── 3: DEMO SCENARIO ───────────────────────────────────── -->
+  <div class="slide" id="s3">
+    <span class="slide-num">03 / 16</span>
+    <div class="t-label">Demo</div>
+    <h2 class="t-title">Patient Follow-Up Email Agent</h2>
+    <div style="width: 100%; max-width: 860px; margin-bottom: 28px;">
+      <div class="t-label" style="margin-bottom: 8px;">Task given to the agent</div>
+      <div class="code">
+        Write a friendly follow-up email for patient <span class="str">p_001</span>.<br>
+        Include <span class="kw">medication instructions</span>, the <span class="kw">next appointment</span>,<br>
+        and a reminder to contact the clinic with questions.
+      </div>
+    </div>
+    <ul class="list" style="max-width: 860px;">
+      <li><span class="dot"></span> Fetch patient details from mock data</li>
+      <li><span class="dot"></span> Fetch the next appointment</li>
+      <li><span class="dot"></span> Write the email and save it as a <code style="color:var(--green); font-family: var(--mono);">.txt</code> file</li>
+      <li><span class="dot red"></span> Do not invent any medical advice</li>
+    </ul>
+  </div>
+
+  <!-- ── 4: AGENT ARCHITECTURE ─────────────────────────────── -->
+  <div class="slide" id="s4">
+    <span class="slide-num">04 / 16</span>
+    <div class="t-label">Architecture</div>
+    <h2 class="t-title">How the Agent is Built</h2>
+    <div class="cols" style="max-width: 1050px; gap: 40px; align-items: center;">
+      <div class="flow">
+        <div class="flow-box hi">User Task</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-box blue">ToolLoopAgent</div>
+        <div class="flow-arrow">↓</div>
+        <div class="flow-row">
+          <div class="flow-col">
+            <div class="flow-box" style="font-size:13px;">getPatientById</div>
+            <div class="flow-arrow" style="font-size:16px;">↓</div>
+            <div class="flow-box orange" style="font-size:13px;">mock JSON</div>
+          </div>
+          <div class="flow-col">
+            <div class="flow-box" style="font-size:12px; padding: 12px 14px;">getUpcomingAppt</div>
+            <div class="flow-arrow" style="font-size:16px;">↓</div>
+            <div class="flow-box orange" style="font-size:13px;">mock JSON</div>
+          </div>
+          <div class="flow-col">
+            <div class="flow-box" style="font-size:13px;">saveEmailTxt</div>
+            <div class="flow-arrow" style="font-size:16px;">↓</div>
+            <div class="flow-box hi" style="font-size:13px;">.txt file</div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="card">
+          <div class="card-label">Key idea</div>
+          <div class="card-body">
+            The model is not given all data at the start.<br><br>
+            It must <strong style="color:var(--bright);">decide to call tools</strong> to get the information it needs.
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Files</div>
+          <div class="card-body" style="display:flex; flex-direction:column; gap:6px;">
+            <code style="color:var(--green); font-family:var(--mono); font-size:14px;">src/agent.ts</code>
+            <code style="color:var(--green); font-family:var(--mono); font-size:14px;">src/tools.ts</code>
+            <code style="color:var(--green); font-family:var(--mono); font-size:14px;">src/data/mock-patients.json</code>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 5: AGENT LOOP ──────────────────────────────────────── -->
+  <div class="slide" id="s5">
+    <span class="slide-num">05 / 16</span>
+    <div class="t-label">How it works</div>
+    <h2 class="t-title">The Agent Loop</h2>
+    <div class="cols" style="max-width: 1050px; align-items: flex-start;">
+      <div class="steps">
+        <div class="step"><span class="step-num">01</span> Agent receives the task</div>
+        <div class="step"><span class="step-num">02</span> Agent decides it needs patient data</div>
+        <div class="step"><span class="step-num">03</span> Agent calls <code style="color:var(--green); font-family:var(--mono);">getPatientById</code></div>
+        <div class="step"><span class="step-num">04</span> Agent reads the patient data</div>
+        <div class="step"><span class="step-num">05</span> Agent calls <code style="color:var(--green); font-family:var(--mono);">getUpcomingAppointment</code></div>
+        <div class="step"><span class="step-num">06</span> Agent writes the email</div>
+        <div class="step"><span class="step-num">07</span> Agent calls <code style="color:var(--green); font-family:var(--mono);">saveEmailTxt</code></div>
+        <div class="step"><span class="step-num">08</span> Agent returns final message</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="card" style="border-left:4px solid var(--blue);">
+          <div class="card-label">Why this matters</div>
+          <div class="card-body">
+            Each step can fail on its own.<br><br>
+            If the agent skips step 3 or 5, the email will look real but contain <strong style="color:var(--red);">wrong information</strong>.
+          </div>
+        </div>
+        <div class="card" style="border-left:4px solid var(--orange);">
+          <div class="card-label">Note</div>
+          <div class="card-body">
+            In this demo, <code style="color:var(--green); font-family:var(--mono);">p_001</code> is in the task prompt. A future version could let the agent find the ID from the patient's name.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 6: TOOLS ───────────────────────────────────────────── -->
+  <div class="slide" id="s6">
+    <span class="slide-num">06 / 16</span>
+    <div class="t-label">src/tools.ts</div>
+    <h2 class="t-title">The Three Tools</h2>
+    <div class="cols" style="max-width: 1050px; grid-template-columns: 1fr 1fr 1fr; gap:20px;">
+      <div class="card">
+        <div class="card-label">Get patient</div>
+        <div class="code" style="margin-bottom:14px; font-size:14px;">
+          <span class="fn">getPatientById</span><span class="dim">(</span><br>
+          &nbsp;&nbsp;<span class="str">patientId</span><br>
+          <span class="dim">)</span>
+        </div>
+        <div class="card-body" style="font-size:15px;">
+          Returns name, doctor, condition, and medication instructions.
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">Get appointment</div>
+        <div class="code" style="margin-bottom:14px; font-size:14px;">
+          <span class="fn">getUpcomingAppointment</span><span class="dim">(</span><br>
+          &nbsp;&nbsp;<span class="str">patientId</span><br>
+          <span class="dim">)</span>
+        </div>
+        <div class="card-body" style="font-size:15px;">
+          Returns the next appointment date and time.
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">Save the email</div>
+        <div class="code" style="margin-bottom:14px; font-size:14px;">
+          <span class="fn">saveEmailTxt</span><span class="dim">(</span><br>
+          &nbsp;&nbsp;<span class="str">filePath</span><span class="dim">,</span><br>
+          &nbsp;&nbsp;<span class="str">content</span><br>
+          <span class="dim">)</span>
+        </div>
+        <div class="card-body" style="font-size:15px;">
+          Writes the email to a <code style="color:var(--green); font-family:var(--mono);">.txt</code> file that evals can check.
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:24px; max-width:1050px; border-left:4px solid var(--green);">
+      <div class="card-body">
+        Each tool has a clear input schema. This limits what the agent can ask for and reduces the chance of wrong outputs.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 7: WHAT CAN GO WRONG ───────────────────────────────── -->
+  <div class="slide" id="s7">
+    <span class="slide-num">07 / 16</span>
+    <div class="t-label">Failure modes</div>
+    <h2 class="t-title">What Can Go Wrong?</h2>
+    <div class="cols" style="max-width: 1000px; gap: 28px;">
+      <div>
+        <div class="t-label" style="color:var(--red); margin-bottom:14px;">Easy to check</div>
+        <ul class="list">
+          <li class="red"><span class="dot"></span> Agent skips a required tool call</li>
+          <li class="red"><span class="dot"></span> Agent uses the wrong patient ID</li>
+          <li class="red"><span class="dot"></span> Agent forgets the appointment date</li>
+          <li class="red"><span class="dot"></span> Agent changes the medication instructions</li>
+          <li class="red"><span class="dot"></span> Agent does not save the file</li>
+        </ul>
+      </div>
+      <div>
+        <div class="t-label" style="color:var(--orange); margin-bottom:14px;">Harder to check</div>
+        <ul class="list">
+          <li class="orange"><span class="dot"></span> Agent invents medical advice</li>
+          <li class="orange"><span class="dot"></span> Email tone is too clinical or cold</li>
+          <li class="orange"><span class="dot"></span> Email is confusing or not helpful</li>
+        </ul>
+        <div class="card" style="margin-top:20px; border-left:4px solid var(--green);">
+          <div class="card-body">
+            The first group needs <strong style="color:var(--bright);">exact checks</strong>.<br>
+            The second needs a <strong style="color:var(--bright);">judge</strong>.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 8: EVAL STRATEGY ───────────────────────────────────── -->
+  <div class="slide center" id="s8">
+    <span class="slide-num">08 / 16</span>
+    <div class="t-label">Strategy</div>
+    <h2 class="t-title">Two Types of Evals</h2>
+    <div class="cols" style="max-width: 960px; text-align: left; gap: 24px;">
+      <div class="card" style="border-top:4px solid var(--green);">
+        <div class="card-title" style="color:var(--green);">Deterministic checks</div>
+        <ul class="list" style="font-size:clamp(15px,1.6vw,18px);">
+          <li><span class="dot"></span> File was saved</li>
+          <li><span class="dot"></span> Required text is present</li>
+          <li><span class="dot"></span> Banned phrases are absent</li>
+          <li><span class="dot"></span> Word count is in range</li>
+        </ul>
+        <div style="margin-top:16px;" class="tag tag-green">Fast &middot; Cheap &middot; Reliable</div>
+      </div>
+      <div class="card" style="border-top:4px solid var(--blue);">
+        <div class="card-title" style="color:var(--blue);">LLM-as-judge</div>
+        <ul class="list" style="font-size:clamp(15px,1.6vw,18px);">
+          <li class="blue"><span class="dot"></span> Tone and clarity</li>
+          <li class="blue"><span class="dot"></span> Helpfulness</li>
+          <li class="blue"><span class="dot"></span> Safety judgment</li>
+          <li class="blue"><span class="dot"></span> Is the email grounded in the data?</li>
+        </ul>
+        <div style="margin-top:16px;" class="tag tag-blue">Flexible &middot; Semantic &middot; Probabilistic</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:28px; max-width:960px; border-left:4px solid var(--green);">
+      <div class="card-body">
+        Use <strong style="color:var(--bright);">exact checks first</strong>. Only use the LLM judge when the requirement cannot be expressed as a simple rule.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 9: DETERMINISTIC CHECKS ───────────────────────────── -->
+  <div class="slide" id="s9">
+    <span class="slide-num">09 / 16</span>
+    <div class="t-label">src/evals/deterministic.ts</div>
+    <h2 class="t-title">Deterministic Checks</h2>
+    <div class="cols" style="max-width: 1050px; gap: 32px; align-items: flex-start;">
+      <div class="code" style="padding: 24px 28px;">
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">email_file_exists</span></div>
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">subject_present</span></div>
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">patient_name_present</span></div>
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">doctor_name_present</span></div>
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">appointment_date_present</span></div>
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">appointment_time_present</span></div>
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">medication_name_present</span></div>
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">medication_instruction_present</span></div>
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">contains_clinic_contact_disclaimer</span></div>
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">no_emergency_advice</span></div>
+        <div class="eval-line"><span class="pass">PASS</span><span class="ename">word_count_in_range</span></div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div class="card" style="border-left:4px solid var(--green);">
+          <div class="card-label">Why use these?</div>
+          <div class="card-body">
+            These checks run in milliseconds. They are fast and do not cost money. They catch common problems before you need an LLM judge.
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">11 checks covering</div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;">
+            <span class="tag tag-green">File I/O</span>
+            <span class="tag tag-green">Required facts</span>
+            <span class="tag tag-green">Safety</span>
+            <span class="tag tag-green">Length</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 10: LLM JUDGE ──────────────────────────────────────── -->
+  <div class="slide" id="s10">
+    <span class="slide-num">10 / 16</span>
+    <div class="t-label">src/evals/llm-judge.ts</div>
+    <h2 class="t-title">The LLM Judge</h2>
+    <div class="cols" style="max-width: 1050px; gap: 32px;">
+      <div class="card">
+        <div class="card-label">Rubric — score 1 to 5, pass = 4 or higher</div>
+        <ul class="list" style="font-size:clamp(15px,1.6vw,18px);">
+          <li class="blue"><span class="dot"></span> Clear, patient-friendly tone</li>
+          <li class="blue"><span class="dot"></span> Uses only the data we gave it</li>
+          <li class="blue"><span class="dot"></span> Medication instructions are unchanged</li>
+          <li class="blue"><span class="dot"></span> Appointment reminder is included</li>
+          <li class="blue"><span class="dot"></span> No new medical advice</li>
+          <li class="blue"><span class="dot"></span> Tells patient to contact the clinic</li>
+        </ul>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div>
+          <div class="t-label" style="margin-bottom:8px;">Output format</div>
+          <div class="code">
+            <span class="dim">{</span><br>
+            &nbsp;&nbsp;<span class="str">"score"</span><span class="dim">:</span> <span class="num">4</span><span class="dim">,</span><br>
+            &nbsp;&nbsp;<span class="str">"passed"</span><span class="dim">:</span> <span class="kw">true</span><span class="dim">,</span><br>
+            &nbsp;&nbsp;<span class="str">"reasoning"</span><span class="dim">:</span> <span class="str">"..."</span><span class="dim">,</span><br>
+            &nbsp;&nbsp;<span class="str">"risks"</span><span class="dim">:</span> <span class="dim">[]</span><span class="dim">,</span><br>
+            &nbsp;&nbsp;<span class="str">"improvements"</span><span class="dim">:</span> <span class="dim">[]</span><br>
+            <span class="dim">}</span>
+          </div>
+        </div>
+        <div class="card" style="border-left:4px solid var(--blue);">
+          <div class="card-body">
+            The judge sees <strong style="color:var(--bright);">both the source data and the email</strong>. It checks if the email is based on the real data, not just if it sounds good.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 11: DEMO COMMANDS ──────────────────────────────────── -->
+  <div class="slide" id="s11">
+    <span class="slide-num">11 / 16</span>
+    <div class="t-label">Live demo</div>
+    <h2 class="t-title">Running the Demo</h2>
+    <div class="cols" style="max-width: 960px; gap: 32px;">
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div>
+          <div class="t-label" style="margin-bottom:8px;">Setup</div>
+          <div class="code">
+            <span class="dim">$</span> <span class="fn">npm</span> install<br>
+            <span class="dim">$</span> <span class="fn">cp</span> .env.example .env
+          </div>
+        </div>
+        <div>
+          <div class="t-label" style="margin-bottom:8px;">Add your API key</div>
+          <div class="code">
+            OPENAI_API_KEY<span class="dim">=</span><span class="str">sk-...</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div>
+          <div class="t-label" style="margin-bottom:8px;">Step 1 — run the agent</div>
+          <div class="code">
+            <span class="dim">$</span> <span class="fn">npm</span> run demo
+          </div>
+          <p class="t-body" style="font-size:15px; margin-top:10px; color:var(--dim);">
+            The agent runs and saves the email file.
+          </p>
+        </div>
+        <div>
+          <div class="t-label" style="margin-bottom:8px;">Step 2 — run the evals</div>
+          <div class="code">
+            <span class="dim">$</span> <span class="fn">npm</span> run eval
+          </div>
+          <p class="t-body" style="font-size:15px; margin-top:10px; color:var(--dim);">
+            Shows deterministic results, then the LLM judge score.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 12: DEMO OUTPUT ────────────────────────────────────── -->
+  <div class="slide" id="s12">
+    <span class="slide-num">12 / 16</span>
+    <div class="t-label">Expected output</div>
+    <h2 class="t-title">What You Will See</h2>
+    <div class="cols" style="max-width: 1050px; gap: 24px; grid-template-columns: 1fr 1.4fr;">
+      <div style="display:flex; flex-direction:column; gap:20px;">
+        <div>
+          <div class="t-label" style="margin-bottom:8px;">Email file created</div>
+          <div class="code" style="color:var(--green);">
+            emails/generated/<br>p_001-follow-up.txt
+          </div>
+        </div>
+        <div>
+          <div class="t-label" style="margin-bottom:8px;">LLM judge score</div>
+          <div class="code">
+            <span class="dim">{</span><br>
+            &nbsp;&nbsp;<span class="str">"score"</span><span class="dim">:</span> <span class="num">4</span><span class="dim">,</span><br>
+            &nbsp;&nbsp;<span class="str">"passed"</span><span class="dim">:</span> <span class="kw">true</span><span class="dim">,</span><br>
+            &nbsp;&nbsp;<span class="str">"reasoning"</span><span class="dim">:</span> <span class="str">"..."</span><br>
+            <span class="dim">}</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="t-label" style="margin-bottom:8px;">Deterministic results</div>
+        <div class="code" style="padding: 20px 24px;">
+          <div class="eval-line"><span class="pass">PASS</span><span class="ename">email_file_exists</span></div>
+          <div class="eval-line"><span class="pass">PASS</span><span class="ename">subject_present</span></div>
+          <div class="eval-line"><span class="pass">PASS</span><span class="ename">patient_name_present</span></div>
+          <div class="eval-line"><span class="pass">PASS</span><span class="ename">appointment_date_present</span></div>
+          <div class="eval-line"><span class="pass">PASS</span><span class="ename">medication_instruction_present</span></div>
+          <div class="eval-line"><span class="pass">PASS</span><span class="ename">contains_clinic_contact_disclaimer</span></div>
+        </div>
+        <div class="card" style="margin-top:16px; border-left:4px solid var(--blue);">
+          <div class="card-body" style="font-size:15px;">
+            Scores can change between runs. That is normal — and another reason evals are important.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 13: WHAT THIS PROVES ───────────────────────────────── -->
+  <div class="slide center" id="s13">
+    <span class="slide-num">13 / 16</span>
+    <div class="t-label">Recap</div>
+    <h2 class="t-title">What This Demo Shows</h2>
+    <div class="cols" style="max-width: 960px; text-align:left; gap:24px;">
+      <div class="card" style="border-left:4px solid var(--green);">
+        <div class="card-label">We can check</div>
+        <ul class="list" style="font-size:clamp(15px,1.6vw,18px);">
+          <li><span class="dot"></span> Final email quality</li>
+          <li><span class="dot"></span> Required facts are present</li>
+          <li><span class="dot"></span> Safety rules are followed</li>
+          <li><span class="dot"></span> The file was actually saved</li>
+          <li><span class="dot"></span> The agent used the right tools</li>
+        </ul>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="code" style="line-height:2.4;">
+          <span style="color:var(--green);">Generated Email</span><br>
+          &nbsp;&nbsp;&nbsp;<span class="dim">├──▶ </span><span style="color:var(--bright);">Deterministic</span><span class="dim"> ──▶ </span><span style="color:var(--green);">Pass/Fail</span><br>
+          &nbsp;&nbsp;&nbsp;<span class="dim">└──▶ </span><span style="color:var(--bright);">LLM Judge</span><span class="dim"> ─────▶ </span><span style="color:var(--blue);">Score + Reason</span>
+        </div>
+        <div class="card">
+          <div class="card-body">
+            This is not a real healthcare product. It is a <strong style="color:var(--bright);">simple, repeatable pattern</strong> for checking agent behavior.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 14: LIMITATIONS ────────────────────────────────────── -->
+  <div class="slide" id="s14">
+    <span class="slide-num">14 / 16</span>
+    <div class="t-label">Honest assessment</div>
+    <h2 class="t-title">Limitations</h2>
+    <div class="cols" style="max-width: 1000px; gap: 28px;">
+      <ul class="list">
+        <li class="red"><span class="dot"></span> One test case is not enough for real confidence</li>
+        <li class="red"><span class="dot"></span> LLM judges can give different scores each run</li>
+        <li class="red"><span class="dot"></span> Exact checks can miss meaning problems</li>
+        <li class="red"><span class="dot"></span> Demo starts with a known patient ID</li>
+      </ul>
+      <div class="card" style="border-left:4px solid var(--orange);">
+        <div class="card-label">Real systems also need</div>
+        <ul class="list" style="font-size:clamp(15px,1.6vw,18px);">
+          <li class="orange"><span class="dot"></span> A larger set of test cases</li>
+          <li class="orange"><span class="dot"></span> Tracking results over time</li>
+          <li class="orange"><span class="dot"></span> Tool-call tracing and logging</li>
+          <li class="orange"><span class="dot"></span> Human review</li>
+          <li class="orange"><span class="dot"></span> Running evals in CI</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 15: NEXT STEPS ─────────────────────────────────────── -->
+  <div class="slide center" id="s15">
+    <span class="slide-num">15 / 16</span>
+    <div class="t-label">Roadmap</div>
+    <h2 class="t-title">Next Steps</h2>
+    <div class="cols" style="max-width: 960px; text-align:left; gap:24px;">
+      <ul class="list">
+        <li><span class="dot"></span> Add <code style="color:var(--green); font-family:var(--mono);">searchPatientByName</code> so the agent can find the ID itself</li>
+        <li><span class="dot"></span> Add more test cases</li>
+        <li><span class="dot"></span> Track which tools the agent called and in what order</li>
+      </ul>
+      <ul class="list">
+        <li><span class="dot"></span> Save eval results over time to see progress</li>
+        <li><span class="dot"></span> Add observability (e.g. LangSmith)</li>
+        <li><span class="dot"></span> Run evals automatically in CI</li>
+      </ul>
+    </div>
+    <div class="card" style="margin-top:32px; max-width:960px; border-left:4px solid var(--green); text-align:left;">
+      <div class="card-body">
+        The goal is to move from a quick demo to a <strong style="color:var(--bright);">real, growing eval system</strong>.
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 16: TAKEAWAYS ──────────────────────────────────────── -->
+  <div class="slide" id="s16">
+    <span class="slide-num">16 / 16</span>
+    <div class="t-label">Key takeaways</div>
+    <h2 class="t-title">Takeaways</h2>
+    <div style="display:flex; flex-direction:column; gap:12px; width:100%; max-width:860px;">
+      <div class="takeaway"><span class="takeaway-n">01</span> Agents need evals because they make decisions across many steps</div>
+      <div class="takeaway"><span class="takeaway-n">02</span> Deterministic checks are best for hard, clear requirements</div>
+      <div class="takeaway"><span class="takeaway-n">03</span> LLM judges are useful for tone, clarity, and safety</div>
+      <div class="takeaway"><span class="takeaway-n">04</span> The best systems use both types of checks together</div>
+      <div class="takeaway"><span class="takeaway-n">05</span> Start small, then build a bigger dataset over time</div>
+    </div>
+    <div class="quote">
+      Good agent evals are not one test. They are a set of checks that tell you if the agent did the right thing, used the right data, and produced a safe result.
+    </div>
+  </div>
+
+</div><!-- /deck -->
+
+<div id="nav">
+  <button id="btn-prev">←</button>
+  <span id="slide-counter">1 / 16</span>
+  <button id="btn-next">→</button>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const counter = document.getElementById('slide-counter');
+  const bar = document.getElementById('progress');
+  const total = slides.length;
+  let cur = 0, busy = false;
+
+  function setProgress() {
+    bar.style.width = ((cur + 1) / total * 100) + '%';
+    counter.textContent = (cur + 1) + ' / ' + total;
+  }
+
+  function goTo(idx) {
+    if (busy || idx === cur || idx < 0 || idx >= total) return;
+    busy = true;
+    const from = slides[cur], to = slides[idx];
+    from.classList.add('exit');
+    from.classList.remove('active');
+    setTimeout(() => from.classList.remove('exit'), 400);
+    const dir = idx > cur ? 48 : -48;
+    to.style.cssText = 'transform: translateX(' + dir + 'px); opacity: 0;';
+    to.classList.add('active');
+    void to.offsetWidth;
+    to.style.cssText = '';
+    cur = idx;
+    setProgress();
+    setTimeout(() => { busy = false; }, 420);
+  }
+
+  document.getElementById('btn-next').onclick = () => goTo(cur + 1);
+  document.getElementById('btn-prev').onclick = () => goTo(cur - 1);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); goTo(cur + 1); }
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); goTo(cur - 1); }
+    if (e.key === 'Home') goTo(0);
+    if (e.key === 'End')  goTo(total - 1);
+  });
+
+  setProgress();
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+{
+  "patients": [
+    {
+      "id": "p_001",
+      "name": "Maria Lopez",
+      "email": "maria.lopez@example.com",
+      "preferredLanguage": "English",
+      "condition": "hypertension",
+      "medications": [
+        {
+          "name": "Lisinopril",
+          "instructions": "Take once daily in the morning"
+        }
+      ],
+      "doctor": "Dr. Chen"
+    },
+    {
+      "id": "p_002",
+      "name": "James Patel",
+      "email": "james.patel@example.com",
+      "preferredLanguage": "English",
+      "condition": "type 2 diabetes",
+      "medications": [
+        {
+          "name": "Metformin",
+          "instructions": "Take with breakfast and dinner"
+        }
+      ],
+      "doctor": "Dr. Williams"
+    }
+  ],
+  "appointments": [
+    {
+      "patientId": "p_001",
+      "date": "2026-05-22",
+      "time": "10:30 AM",
+      "type": "Blood pressure follow-up"
+    },
+    {
+      "patientId": "p_002",
+      "date": "2026-05-25",
+      "time": "2:00 PM",
+      "type": "Diabetes care check-in"
+    }
+  ]
+}

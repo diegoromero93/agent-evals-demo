@@ -1,0 +1,24 @@
+{
+  "name": "ew-evals",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "demo": "tsx src/demo.ts",
+    "demo:v1": "tsx src/demo.ts v1",
+    "eval": "tsx src/evals/run-evals.ts",
+    "eval:v1": "tsx src/evals/run-evals.ts v1",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "latest",
+    "ai": "latest",
+    "dotenv": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}
