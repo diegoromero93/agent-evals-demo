@@ -30,5 +30,8 @@ export type EmailCase = {
   agentVersion: "current" | "v1";
   patientId: string;
   outputFile: string;
+  toolTraceFile: string;
+  requiredTools: string[];
+  expectedToolOrder: string[];
   prompt: string;
 };

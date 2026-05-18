@@ -11,6 +11,7 @@ All data is fake mock data. Do not use real PHI in this demo.
 - A tool-loop agent that retrieves mock patient and appointment data.
 - A file-writing tool that saves generated emails as `.txt` files.
 - Deterministic evals for exact requirements.
+- Tool usage evals for required tool calls and relative call order.
 - An LLM-as-judge eval for tone, clarity, groundedness, and safety.
 - An intentionally weaker `v1` prompt so eval failures are easy to show.
 
@@ -42,6 +43,7 @@ This creates:
 
 ```txt
 emails/generated/p_001-follow-up.txt
+emails/generated/p_001-follow-up.tools.json
 ```
 
 Evaluate it:
@@ -70,14 +72,16 @@ This creates and evaluates:
 
 ```txt
 emails/generated/p_001-follow-up-v1.txt
+emails/generated/p_001-follow-up-v1.tools.json
 ```
 
 ## Eval Types
 
-The eval runner performs two kinds of checks:
+The eval runner performs three kinds of checks:
 
 1. Deterministic checks for file existence, required facts, required sections, medication instructions, disclaimer, and word count.
-2. LLM-as-judge evaluation for tone, clarity, groundedness, safety, and completeness.
+2. Tool usage checks for required tool calls and expected relative order.
+3. LLM-as-judge evaluation for tone, clarity, groundedness, safety, and completeness.
 
 ## Main Files
 
@@ -87,6 +91,7 @@ src/tools.ts                  Agent tools for mock data lookup and file writing
 src/data/mock-patients.json   Fake patient and appointment data
 src/datasets/email-cases.ts   Current and v1 demo cases
 src/evals/deterministic.ts    Rule-based eval checks
+src/evals/tool-usage.ts       Tool call presence and order checks
 src/evals/llm-judge.ts        LLM-as-judge eval
 src/evals/run-evals.ts        Eval runner
 ```
