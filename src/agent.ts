@@ -1,11 +1,9 @@
-import { openai } from "@ai-sdk/openai";
 import { stepCountIs, ToolLoopAgent } from "ai";
+import { getLanguageModel } from "./model.js";
 import { emailAgentTools } from "./tools.js";
 
-const modelName = process.env.OPENAI_MODEL ?? "gpt-4.1-mini";
-
 export const emailAgent = new ToolLoopAgent({
-  model: openai(modelName),
+  model: getLanguageModel(),
   stopWhen: stepCountIs(8),
   tools: emailAgentTools,
   instructions: [
@@ -19,7 +17,7 @@ export const emailAgent = new ToolLoopAgent({
 });
 
 export const emailAgentV1 = new ToolLoopAgent({
-  model: openai(modelName),
+  model: getLanguageModel(),
   stopWhen: stepCountIs(6),
   tools: emailAgentTools,
   instructions: [

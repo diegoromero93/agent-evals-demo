@@ -11,6 +11,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "3.0.78",
     "@ai-sdk/openai": "3.0.64",
     "ai": "6.0.184",
     "dotenv": "17.4.2",

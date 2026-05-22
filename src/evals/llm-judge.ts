@@ -1,6 +1,6 @@
-import { openai } from "@ai-sdk/openai";
 import { generateText, Output } from "ai";
 import { z } from "zod";
+import { getLanguageModel } from "../model.js";
 import { getPatient, getUpcomingAppointment } from "../tools.js";
 import type { EmailCase } from "../types.js";
 
@@ -17,10 +17,9 @@ export type JudgeResult = z.infer<typeof JudgeResultSchema>;
 export async function runLlmJudge(emailCase: EmailCase, emailText: string): Promise<JudgeResult> {
   const patient = getPatient(emailCase.patientId);
   const appointment = getUpcomingAppointment(emailCase.patientId);
-  const modelName = process.env.OPENAI_JUDGE_MODEL ?? process.env.OPENAI_MODEL ?? "gpt-4.1-mini";
 
   const result = await generateText({
-    model: openai(modelName),
+    model: getLanguageModel({ judge: true }),
     output: Output.object({ schema: JudgeResultSchema }),
     prompt: [
       "You are evaluating a mock patient follow-up email. Return only the structured evaluation.",

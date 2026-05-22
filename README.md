@@ -2,7 +2,7 @@
 
 This is a small TypeScript demo for evaluating AI agents.
 
-The demo uses AI SDK with the OpenAI adapter to run a patient follow-up email agent. The agent uses a tool loop to fetch mock patient data, fetch appointment data, and save the final email to a `.txt` file.
+The demo uses AI SDK with OpenAI or Anthropic to run a patient follow-up email agent. The agent uses a tool loop to fetch mock patient data, fetch appointment data, and save the final email to a `.txt` file.
 
 All data is fake mock data. Do not use real PHI in this demo.
 
@@ -22,13 +22,29 @@ npm install
 cp .env.example .env
 ```
 
-Set `OPENAI_API_KEY` in `.env`.
+Set an API key in `.env`.
+
+For OpenAI, which is the default provider:
+
+```bash
+AI_PROVIDER=openai
+OPENAI_API_KEY=your_openai_api_key_here
+```
+
+For Anthropic:
+
+```bash
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
+```
 
 Optional model overrides:
 
 ```bash
 OPENAI_MODEL=gpt-4.1-mini
 OPENAI_JUDGE_MODEL=gpt-4.1-mini
+ANTHROPIC_MODEL=claude-3-5-haiku-latest
+ANTHROPIC_JUDGE_MODEL=claude-3-5-haiku-latest
 ```
 
 ## Happy Path Demo
@@ -87,6 +103,7 @@ The eval runner performs three kinds of checks:
 
 ```txt
 src/agent.ts                  ToolLoopAgent definitions for current and v1
+src/model.ts                  OpenAI/Anthropic provider and model selection
 src/tools.ts                  Agent tools for mock data lookup and file writing
 src/data/mock-patients.json   Fake patient and appointment data
 src/datasets/email-cases.ts   Current and v1 demo cases
